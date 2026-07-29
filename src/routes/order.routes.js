@@ -6,6 +6,9 @@ const {
   createOrder,
   getOrders,
   getOrderById,
+  getInvoice,
+  getCustomerOrders,
+  trackOrder,
   updateOrderStatus,
   updatePaymentStatus,
   cancelOrder,
@@ -14,10 +17,14 @@ const {
 );
 
 router.post("/", createOrder);
+router.post("/shop", createOrder);
+router.get("/customer/:customerId", getCustomerOrders);
+router.get("/track/:orderNumber", trackOrder);
 
 router.get("/", getOrders);
 
 router.get("/:id", getOrderById);
+router.get("/:id/invoice", getInvoice);
 
 router.patch(
   "/:id/status",

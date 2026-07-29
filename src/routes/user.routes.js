@@ -1,12 +1,9 @@
 const router = require("express").Router();
 
-const protect = require(
-  "../middlewares/auth.middleware"
-);
-
-const authorize = require(
-  "../middlewares/role.middleware"
-);
+const {
+  protect,
+  authorize,
+} = require("../middlewares/auth.middleware");
 
 const {
   createAccountant,
@@ -24,7 +21,7 @@ router.post(
 router.get(
   "/",
   protect,
-  authorize("ADMIN"),
+  authorize("ADMIN", "ACCOUNTANT"),
   getAllUsers
 );
 

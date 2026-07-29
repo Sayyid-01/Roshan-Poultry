@@ -59,6 +59,8 @@ const orderSchema = new mongoose.Schema(
       enum: [
         "PENDING",
         "CONFIRMED",
+        "PROCESSING",
+        "DELIVERED",
         "COMPLETED",
         "CANCELLED",
       ],
@@ -75,6 +77,8 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    deliveryAddress: { type: String, default: "" },
+    paymentMethod: { type: String, enum: ["COD", "RAZORPAY", "STRIPE"], default: "COD" },
   },
   {
     timestamps: true,

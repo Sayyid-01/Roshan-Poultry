@@ -1,34 +1,49 @@
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { sendWelcomeEmail } = require("../services/notification.service");
 
 exports.login = async (req, res) => {
   try {
     const { email, phone, password } = req.body;
 
-    const user = await User.findOne({
-      $or: [{ email }, { phone }],
-    });
+    let user = null;
+
+    if (email) {
+      user = await User.findOne({
+        email: email.trim().toLowerCase(),
+      });
+    } else if (phone) {
+      user = await User.findOne({
+        phone: phone.trim(),
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Email or phone is required",
+      });
+    }
 
     if (!user) {
       return res.status(400).json({
-        message: "Invalid credentials",
+        success: false,
+        message: "User not found",
+      });
+    }
+    
+
+    if (email) {
+      user = await User.findOne({
+        email: email.trim().toLowerCase(),
       });
     }
 
-    if (!user.password) {
-      return res.status(400).json({
-        message: "Password not set",
-      });
-    }
+    const match = await bcrypt.compare(password, user.password);
 
-    const match = await bcrypt.compare(
-      password,
-      user.password
-    );
 
     if (!match) {
       return res.status(400).json({
+        success: false,
         message: "Invalid credentials",
       });
     }
@@ -44,7 +59,7 @@ exports.login = async (req, res) => {
       }
     );
 
-    res.json({
+    return res.json({
       success: true,
       token,
       user: {
@@ -56,12 +71,12 @@ exports.login = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
+      success: false,
       message: error.message,
     });
   }
 };
-
 exports.register = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -85,6 +100,8 @@ exports.register = async (req, res) => {
       password: hashedPassword,
       role: "CUSTOMER",
     });
+
+    sendWelcomeEmail(user).catch((error) => console.error("Welcome email failed:", error.message));
 
     res.status(201).json({
       success: true,

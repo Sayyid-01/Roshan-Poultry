@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 const Order = require("../models/order.model");
 const Product = require("../models/product.model");
 const User = require("../models/user.model");
+const InventoryMovement = require("../models/inventoryMovement.model");
+const { sendLowStockEmail, sendOrderEmail } = require("../services/notification.service");
+const bcrypt = require("bcryptjs");
 
 exports.createOrder = async (req, res) => {
   const session = await mongoose.startSession();
@@ -10,20 +13,32 @@ exports.createOrder = async (req, res) => {
     session.startTransaction();
 
     const {
-      customerId,
+      customerId: requestedCustomerId,
       items,
       notes,
+      customer: customerDetails,
+      paymentMethod = "COD",
     } = req.body;
 
-    if (!customerId || !items || !items.length) {
+    if ((!requestedCustomerId && !customerDetails?.name) || !items || !items.length) {
       throw new Error(
         "Customer and items are required"
       );
     }
 
-    const customer = await User.findById(
-      customerId
-    ).session(session);
+    let customerId = requestedCustomerId;
+    let customer = customerId ? await User.findById(customerId).session(session) : null;
+    if (!customer && customerDetails) {
+      customer = await User.findOne({ $or: [{ email: customerDetails.email || undefined }, { phone: customerDetails.phone || undefined }] }).session(session);
+      if (!customer) {
+        customer = await User.create([{
+          name: customerDetails.name, email: customerDetails.email || undefined, phone: customerDetails.phone || undefined,
+          address: customerDetails.address || "", password: await bcrypt.hash(`guest-${Date.now()}-${Math.random()}`, 10), role: "CUSTOMER",
+        }], { session });
+        customer = customer[0];
+      }
+      customerId = customer._id;
+    }
 
     if (!customer) {
       throw new Error("Customer not found");
@@ -68,9 +83,14 @@ exports.createOrder = async (req, res) => {
 
       totalAmount += itemTotal;
 
+      const previousStock = product.stock;
       product.stock -= item.quantity;
 
       await product.save({ session });
+      await InventoryMovement.create([{
+        product: product._id, productName: product.name, type: "OUT", quantity: item.quantity,
+        previousStock, currentStock: product.stock, note: "Online / counter order",
+      }], { session });
     }
 
     const orderNumber =
@@ -87,6 +107,8 @@ exports.createOrder = async (req, res) => {
           items: orderItems,
           totalAmount,
           notes,
+          deliveryAddress: customerDetails?.address || customer.address || "",
+          paymentMethod,
         },
       ],
       { session }
@@ -94,6 +116,12 @@ exports.createOrder = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    sendOrderEmail(order[0], customer, "placed").catch((error) => console.error("Order email failed:", error.message));
+    for (const item of orderItems) {
+      const product = await Product.findById(item.product);
+      if (product && product.stock <= product.minimumStock) sendLowStockEmail(product).catch((error) => console.error("Low stock email failed:", error.message));
+    }
 
     res.status(201).json({
       success: true,
@@ -109,6 +137,21 @@ exports.createOrder = async (req, res) => {
       message: error.message,
     });
   }
+};
+
+exports.getCustomerOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ customer: req.params.customerId }).sort({ createdAt: -1 });
+    res.json({ success: true, orders });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+exports.trackOrder = async (req, res) => {
+  try {
+    const order = await Order.findOne({ orderNumber: req.params.orderNumber.toUpperCase() }).select("orderNumber status paymentStatus totalAmount createdAt items");
+    if (!order) return res.status(404).json({ success: false, message: "Order not found. Please check the order number." });
+    res.json({ success: true, order });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 };
 
 exports.getOrders = async (req, res) => {
@@ -165,6 +208,24 @@ exports.getOrderById = async (
   }
 };
 
+exports.getInvoice = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).populate("customer", "name email phone address");
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    res.json({
+      success: true,
+      invoice: {
+        number: `INV-${order.orderNumber.replace("ORD-", "")}`,
+        issuedAt: order.createdAt,
+        seller: { name: "Roshan Poultry Farm", phone: "+91 98765 43210" },
+        order,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.updateOrderStatus = async (
   req,
   res
@@ -201,6 +262,9 @@ exports.updateOrderStatus = async (
         message: "Order not found",
       });
     }
+
+    const customer = await User.findById(order.customer);
+    sendOrderEmail(order, customer, status.toLowerCase()).catch((error) => console.error("Order status email failed:", error.message));
 
     res.json({
       success: true,

@@ -14,7 +14,10 @@ exports.createProduct = async (req, res) => {
             unit,
             price,
             stock,
-            description
+            description,
+            image,
+            minimumStock,
+            sku
         } = req.body;
 
 
@@ -24,7 +27,10 @@ exports.createProduct = async (req, res) => {
             unit,
             price,
             stock,
-            description
+            description,
+            image,
+            minimumStock,
+            sku
         });
 
 
