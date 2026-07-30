@@ -20,7 +20,7 @@ exports.createOrder = async (req, res) => {
       paymentMethod = "COD",
     } = req.body;
 
-    if ((!requestedCustomerId && !customerDetails?.name) || !items || !items.length) {
+    if ((!requestedCustomerId && !customerDetails?.name && !customerDetails?.email && !customerDetails?.phone) || !items || !items.length) {
       throw new Error(
         "Customer and items are required"
       );
@@ -32,8 +32,12 @@ exports.createOrder = async (req, res) => {
       customer = await User.findOne({ $or: [{ email: customerDetails.email || undefined }, { phone: customerDetails.phone || undefined }] }).session(session);
       if (!customer) {
         customer = await User.create([{
-          name: customerDetails.name, email: customerDetails.email || undefined, phone: customerDetails.phone || undefined,
-          address: customerDetails.address || "", password: await bcrypt.hash(`guest-${Date.now()}-${Math.random()}`, 10), role: "CUSTOMER",
+          name: customerDetails.name || customerDetails.email || customerDetails.phone || "Customer",
+          email: customerDetails.email || undefined,
+          phone: customerDetails.phone || undefined,
+          address: customerDetails.address || "",
+          password: await bcrypt.hash(`guest-${Date.now()}-${Math.random()}`, 10),
+          role: "CUSTOMER",
         }], { session });
         customer = customer[0];
       }
@@ -156,7 +160,37 @@ exports.trackOrder = async (req, res) => {
 
 exports.getOrders = async (req, res) => {
   try {
-    const orders = await Order.find()
+    const { month, week, day, userId } = req.query;
+    const filter = {};
+
+    // Filter by user/customer
+    if (userId) {
+      filter.customer = userId;
+    }
+
+    // Filter by date range
+    if (day) {
+      const start = new Date(day);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(day);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    } else if (week) {
+      const [year, weekNum] = week.split('-W').map(Number);
+      const start = new Date(year, 0, 1 + (weekNum - 1) * 7);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      filter.createdAt = { $gte: start, $lt: end };
+    } else if (month) {
+      const [year, monthNum] = month.split('-').map(Number);
+      const start = new Date(year, monthNum - 1, 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    const orders = await Order.find(filter)
       .populate(
         "customer",
         "name email phone"
