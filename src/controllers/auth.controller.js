@@ -174,17 +174,17 @@ exports.login = async (req, res) => {
     // Generate and store OTP in the user document
     const { otp, hashedOtp, otpExpiry } = await createOtp();
     user.otp = hashedOtp;
-    console.log(`Generated OTP for ${user.email}: ${otp}`); // Log OTP for development/testing
+   
     user.otpExpiry = otpExpiry;
     await user.save();
 
-    // Always log OTP to console for development/testing
-
+  
     // Send OTP via email
     sendOtpEmail(user.email, otp, user.name)
 
     return res.json({
       success: true,
+      otp: otp, // For testing purposes only; remove in production
       message: "OTP sent to your email. Please verify to complete login.",
       email: user.email,
     });
