@@ -186,10 +186,7 @@ CONTENT: Blog, Gallery, Testimonials, Inquiries endpoints.
        CLOUDINARY_API_SECRET=your-api-secret
   5. Run: npm run dev (development) or npm start (production)
 
-9. DEFAULT ADMIN
-------------------------------------------------------------
-  An admin seed script is available at /src/seeds/admin.js
-  to create the initial admin account.
+9
 
 ============================================================
    END OF BACKEND README
