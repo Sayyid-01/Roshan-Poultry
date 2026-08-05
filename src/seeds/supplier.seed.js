@@ -36,7 +36,6 @@ async function seed() {
   await Supplier.deleteMany();
   await Supplier.insertMany(suppliers);
 
-  console.log("Suppliers Seeded");
   process.exit();
 }
 

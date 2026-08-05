@@ -312,17 +312,14 @@ async function seedProducts() {
   try {
     await mongoose.connect(MONGO_URI);
 
-    console.log("MongoDB Connected");
 
     await Product.deleteMany();
 
     await Product.insertMany(products);
 
-    console.log(`✅ ${products.length} products inserted successfully`);
 
     process.exit();
   } catch (err) {
-    console.error(err);
     process.exit(1);
   }
 }

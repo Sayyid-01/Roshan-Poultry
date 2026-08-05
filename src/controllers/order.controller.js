@@ -121,10 +121,8 @@ exports.createOrder = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    sendOrderEmail(order[0], customer, "placed").catch((error) => console.error("Order email failed:", error.message));
     for (const item of orderItems) {
       const product = await Product.findById(item.product);
-      if (product && product.stock <= product.minimumStock) sendLowStockEmail(product).catch((error) => console.error("Low stock email failed:", error.message));
     }
 
     res.status(201).json({
@@ -298,7 +296,6 @@ exports.updateOrderStatus = async (
     }
 
     const customer = await User.findById(order.customer);
-    sendOrderEmail(order, customer, status.toLowerCase()).catch((error) => console.error("Order status email failed:", error.message));
 
     res.json({
       success: true,

@@ -2,9 +2,6 @@ const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 
 exports.createCustomer = async (req, res) => {
-  console.log("===== CREATE CUSTOMER API HIT =====");
-  console.log("BODY:", req.body);
-  console.log("LOGGED IN USER:", req.user);
 
   try {
     const { name, email, phone, password, address } = req.body;
@@ -16,13 +13,11 @@ exports.createCustomer = async (req, res) => {
         message: "Name, email, phone and password are required",
       });
     }
-    console.log("REQUEST TIME:", new Date());
     // Check if customer already exists
     const userExist = await User.findOne({
       $or: [{ email }, { phone }],
     });
 
-    console.log("USER EXIST:", userExist);
 
     if (userExist) {
       return res.status(400).json({
@@ -44,7 +39,6 @@ exports.createCustomer = async (req, res) => {
       role: "CUSTOMER",
     });
 
-    console.log("CREATED CUSTOMER:", customer);
 
     // Response
     res.status(201).json({
@@ -61,7 +55,6 @@ exports.createCustomer = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("CREATE CUSTOMER ERROR:", error);
 
     res.status(500).json({
       success: false,

@@ -80,17 +80,13 @@ const seedExpenses = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
 
-    console.log("MongoDB Connected");
 
     await Expense.deleteMany();
-    console.log("Old expenses deleted");
 
     await Expense.insertMany(expenses);
-    console.log("Expenses seeded successfully");
 
     process.exit();
   } catch (error) {
-    console.log(error);
     process.exit(1);
   }
 };
