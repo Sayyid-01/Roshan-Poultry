@@ -1,32 +1,92 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
 
+// Force IPv4 to avoid IPv6 connection issues on cloud platforms
 dns.setDefaultResultOrder("ipv4first");
 
 const canSend = () => process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS;
 
-const getPrimaryTransporter = () => nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT || 587),
-  secure: process.env.EMAIL_SECURE === "true",
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
+// Create transporter with robust connection settings
+const getPrimaryTransporter = () => {
+  const port = Number(process.env.EMAIL_PORT || 587);
+  const secure = process.env.EMAIL_SECURE === "true";
+
+  return nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port,
+    secure, // false for 587 (STARTTLS), true for 465 (SSL)
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false, // Allow self-signed certs in dev
+      minVersion: "TLSv1.2",
+    },
+    // Critical: connection timeouts to prevent hanging on cloud platforms
+    connectionTimeout: 30000, // 30 seconds
+    greetingTimeout: 30000,
+    socketTimeout: 60000,
+    // Pool connections to avoid re-establishing on every send
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+  });
+};
+
+// Fallback transporter using port 587 (STARTTLS) if primary fails
+const getFallbackTransporter = () => {
+  return nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: "TLSv1.2",
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 60000,
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+  });
+};
 
 const send = async ({ to, subject, html }) => {
-  if (!to || !canSend()) return { skipped: true };
+  if (!to || !canSend()) {
+    console.warn("[EMAIL] Skipped - missing config or recipient:", { to, hasConfig: canSend() });
+    return { skipped: true };
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to,
+    subject,
+    html,
+  };
+
+  // Try primary transporter first
   try {
-    const info = await getPrimaryTransporter().sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-      to,
-      subject,
-      html,
-    });
+    const info = await getPrimaryTransporter().sendMail(mailOptions);
+    console.log(`[EMAIL] Sent to ${to} - Message ID: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
-  } catch (err) {
-    throw err;
+  } catch (primaryErr) {
+    console.error(`[EMAIL] Primary transporter failed for ${to}:`, primaryErr.message);
+
+    // If primary failed (e.g., port 465 blocked), try fallback on port 587
+    try {
+      const fallbackInfo = await getFallbackTransporter().sendMail(mailOptions);
+      console.log(`[EMAIL] Sent via fallback (587) to ${to} - Message ID: ${fallbackInfo.messageId}`);
+      return { success: true, messageId: fallbackInfo.messageId, usedFallback: true };
+    } catch (fallbackErr) {
+      console.error(`[EMAIL] Fallback transporter also failed for ${to}:`, fallbackErr.message);
+      throw fallbackErr;
+    }
   }
 };
 

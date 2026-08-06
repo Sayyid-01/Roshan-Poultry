@@ -106,7 +106,9 @@ exports.register = async (req, res) => {
     // Always log OTP to console for development/testing
 
     // Send OTP via email (fire and forget, but log if fails)
-    sendOtpEmail(pendingRegistration.email, otp, pendingRegistration.name)
+    sendOtpEmail(pendingRegistration.email, otp, pendingRegistration.name).catch((err) =>
+      console.error("[AUTH] Error sending registration OTP:", err.message)
+    );
 
     return res.status(201).json({
       success: true,
@@ -180,7 +182,9 @@ exports.login = async (req, res) => {
 
   
     // Send OTP via email
-    sendOtpEmail(user.email, otp, user.name)
+    sendOtpEmail(user.email, otp, user.name).catch((err) =>
+      console.error("[AUTH] Error sending login OTP:", err.message)
+    );
 
     return res.json({
       success: true,
@@ -362,7 +366,9 @@ exports.resendOtp = async (req, res) => {
 
       // Always log OTP to console for development/testing
 
-      sendOtpEmail(pendingReg.email, otp, pendingReg.name)
+      sendOtpEmail(pendingReg.email, otp, pendingReg.name).catch((err) =>
+        console.error("[AUTH] Error resending OTP (pending):", err.message)
+      );
 
       return res.json({
         success: true,
@@ -388,7 +394,9 @@ exports.resendOtp = async (req, res) => {
 
     // Always log OTP to console for development/testing
 
-    sendOtpEmail(user.email, otp, user.name)
+    sendOtpEmail(user.email, otp, user.name).catch((err) =>
+      console.error("[AUTH] Error resending OTP (user):", err.message)
+    );
 
     return res.json({
       success: true,
