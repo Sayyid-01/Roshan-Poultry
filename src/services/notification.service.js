@@ -1,8 +1,13 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
 
-// Force IPv4 to avoid IPv6 connection issues on cloud platforms
+// Force IPv4 for DNS resolution to avoid IPv6 connectivity issues on cloud platforms
 dns.setDefaultResultOrder("ipv4first");
+
+// Force IPv4 at the socket level - critical for cloud platforms that don't support IPv6
+const ipv4Lookup = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, family: 4 }, callback);
+};
 
 const canSend = () => process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS;
 
@@ -20,11 +25,13 @@ const getPrimaryTransporter = () => {
       pass: process.env.EMAIL_PASS,
     },
     tls: {
-      rejectUnauthorized: false, // Allow self-signed certs in dev
+      rejectUnauthorized: false,
       minVersion: "TLSv1.2",
     },
+    // Force IPv4 resolution - prevents ENETUNREACH on IPv6-only networks
+    lookup: ipv4Lookup,
     // Critical: connection timeouts to prevent hanging on cloud platforms
-    connectionTimeout: 30000, // 30 seconds
+    connectionTimeout: 30000,
     greetingTimeout: 30000,
     socketTimeout: 60000,
     // Pool connections to avoid re-establishing on every send
@@ -48,6 +55,8 @@ const getFallbackTransporter = () => {
       rejectUnauthorized: false,
       minVersion: "TLSv1.2",
     },
+    // Force IPv4 resolution
+    lookup: ipv4Lookup,
     connectionTimeout: 30000,
     greetingTimeout: 30000,
     socketTimeout: 60000,
@@ -78,7 +87,7 @@ const send = async ({ to, subject, html }) => {
   } catch (primaryErr) {
     console.error(`[EMAIL] Primary transporter failed for ${to}:`, primaryErr.message);
 
-    // If primary failed (e.g., port 465 blocked), try fallback on port 587
+    // If primary failed, try fallback on port 587
     try {
       const fallbackInfo = await getFallbackTransporter().sendMail(mailOptions);
       console.log(`[EMAIL] Sent via fallback (587) to ${to} - Message ID: ${fallbackInfo.messageId}`);
