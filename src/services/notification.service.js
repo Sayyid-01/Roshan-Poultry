@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
+const { Resend } = require("resend");
 
 // Force IPv4 for DNS resolution to avoid IPv6 connectivity issues on cloud platforms
 dns.setDefaultResultOrder("ipv4first");
@@ -28,7 +29,9 @@ const getPrimaryTransporter = () => {
       rejectUnauthorized: false,
       minVersion: "TLSv1.2",
     },
-    // Force IPv4 resolution - prevents ENETUNREACH on IPv6-only networks
+    // Force IPv4 - family: 4 is passed directly to net.connect
+    family: 4,
+    // Also force IPv4 via custom lookup as a backup
     lookup: ipv4Lookup,
     // Critical: connection timeouts to prevent hanging on cloud platforms
     connectionTimeout: 30000,
@@ -55,7 +58,8 @@ const getFallbackTransporter = () => {
       rejectUnauthorized: false,
       minVersion: "TLSv1.2",
     },
-    // Force IPv4 resolution
+    // Force IPv4
+    family: 4,
     lookup: ipv4Lookup,
     connectionTimeout: 30000,
     greetingTimeout: 30000,
@@ -64,6 +68,33 @@ const getFallbackTransporter = () => {
     maxConnections: 5,
     maxMessages: 100,
   });
+};
+
+// Send via Resend HTTP API - works on port 443 which is always allowed on cloud platforms
+const sendViaResend = async ({ to, subject, html }) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("[EMAIL] No RESEND_API_KEY configured, skipping Resend send");
+    return null;
+  }
+
+  const resend = new Resend(apiKey);
+
+  // Resend requires a verified domain. Use RESEND_FROM if set, otherwise use Resend's test domain
+  const from = process.env.RESEND_FROM || "Roshan Poultry <onboarding@resend.dev>";
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [to],
+    subject,
+    html,
+  });
+
+  if (error) {
+    throw new Error(`Resend API error: ${error.message}`);
+  }
+
+  return { success: true, messageId: data?.id, usedHttpApi: true };
 };
 
 const send = async ({ to, subject, html }) => {
@@ -79,21 +110,32 @@ const send = async ({ to, subject, html }) => {
     html,
   };
 
-  // Try primary transporter first
+  // Strategy 1: Try Resend HTTP API first (most reliable on cloud platforms)
+  try {
+    const httpResult = await sendViaResend({ to, subject, html });
+    if (httpResult) {
+      console.log(`[EMAIL] Sent via Resend API to ${to} - Message ID: ${httpResult.messageId}`);
+      return httpResult;
+    }
+  } catch (httpErr) {
+    console.error(`[EMAIL] Resend API failed for ${to}:`, httpErr.message);
+  }
+
+  // Strategy 2: Try SMTP primary transporter
   try {
     const info = await getPrimaryTransporter().sendMail(mailOptions);
-    console.log(`[EMAIL] Sent to ${to} - Message ID: ${info.messageId}`);
+    console.log(`[EMAIL] Sent via SMTP to ${to} - Message ID: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (primaryErr) {
-    console.error(`[EMAIL] Primary transporter failed for ${to}:`, primaryErr.message);
+    console.error(`[EMAIL] Primary SMTP transporter failed for ${to}:`, primaryErr.message);
 
-    // If primary failed, try fallback on port 587
+    // Strategy 3: Try SMTP fallback on port 587
     try {
       const fallbackInfo = await getFallbackTransporter().sendMail(mailOptions);
-      console.log(`[EMAIL] Sent via fallback (587) to ${to} - Message ID: ${fallbackInfo.messageId}`);
+      console.log(`[EMAIL] Sent via SMTP fallback (587) to ${to} - Message ID: ${fallbackInfo.messageId}`);
       return { success: true, messageId: fallbackInfo.messageId, usedFallback: true };
     } catch (fallbackErr) {
-      console.error(`[EMAIL] Fallback transporter also failed for ${to}:`, fallbackErr.message);
+      console.error(`[EMAIL] All email methods failed for ${to}:`, fallbackErr.message);
       throw fallbackErr;
     }
   }
