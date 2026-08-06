@@ -7,6 +7,7 @@ const getPrimaryTransporter = () => nodemailer.createTransport({
   port: Number(process.env.EMAIL_PORT || 587),
   secure: process.env.EMAIL_SECURE === "true",
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  family: 4, // Use IPv4 to avoid potential IPv6 issues
 });
 
 const send = async ({ to, subject, html }) => {
