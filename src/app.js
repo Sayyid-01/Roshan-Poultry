@@ -15,6 +15,7 @@ app.use(express.json());
 //authentication and authorization routes
 app.use( "/api/auth", require("./routes/auth.routes"));
 
+
 //Admin and Accountant routes
 app.use( "/api/admin", require("./routes/admin.routes"));
 app.use( "/api/accountant", require("./routes/accountant.routes"));
